@@ -10,58 +10,93 @@ else:
 
 ticket = os.path.join(pasta_do_programa, "ticket.txt")
 
-# VALORES (Mudar aqui caso haja alteração no preço)
-VALOR_HORA = 10.00
-VALOR_PERIODO = 20.00
-TOLERANCIA_MINUTOS = 5
-
 BANCO_DADOS = 'estacionamento.db'
 
 def inicializar_arquivos():
-    """Cria banco de dados e tabela se não existirem"""
     conn = sqlite3.connect(BANCO_DADOS)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS rotativo (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            placa TEXT,
-            veiculo TEXT,
-            data TEXT,
-            entrada TEXT,
-            saida TEXT,
+            placa TEXT, veiculo TEXT, data TEXT, entrada TEXT, saida TEXT, valor REAL
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS precos_faixas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            minutos_limite INTEGER,
             valor REAL
         )
     ''')
+    
+    cursor.execute("SELECT COUNT(*) FROM precos_faixas")
+    if cursor.fetchone()[0] == 0:
+        config_padrao = [(30, 6.00), (40, 8.00), (60, 10.00), (105, 15.00), (9999, 20.00)]
+        cursor.executemany("INSERT INTO precos_faixas (minutos_limite, valor) VALUES (?, ?)", config_padrao)
+    
     conn.commit()
     conn.close()
 
-def calcular_valor_simples(hora_entrada_str):
-    """Calcula o valor com tolerância na primeira hora"""
-    formato = '%H:%M:%S'
-    h_entrada = datetime.strptime(hora_entrada_str, formato)
-    agora_str = datetime.now().strftime('%H:%M:%S')
-    h_saida = datetime.strptime(agora_str, formato)
-    
-    duracao = h_saida - h_entrada
-    total_segundos = duracao.total_seconds()
-    
-    if total_segundos < 0: return 0.0
-    minutos = total_segundos / 60
+def calcular_valor_atual(hora_entrada_str):
+    conn = sqlite3.connect(BANCO_DADOS)
+    cursor = conn.cursor()
+    cursor.execute("SELECT minutos_limite, valor FROM precos_faixas ORDER BY minutos_limite ASC")
+    regras = cursor.fetchall()
+    conn.close()
 
-    # VALORES
-    if minutos <= 5:
+    if not regras:
         return 0.0
-    elif minutos <= 30:
-        return 6.00  # Até 30 min: R$ 6,00
-    elif minutos <= 40:
-        return 8.00  # Até 40 min: R$ 8,00
-    elif minutos <= 60: 
-        return 10.00 # Até 60 min: R$ 10,00
-    elif minutos <= 80: 
-        return 15.00 # De 1h20 até 1h45: R$ 15,00
-    else:
-        return 20.00 # Acima de 1h45: R$ 20,00 (Período)
+
+    formato = '%H:%M:%S'
+    try:
+        h_entrada = datetime.strptime(hora_entrada_str, formato)
+        agora = datetime.now()
+        h_entrada = h_entrada.replace(year=agora.year, month=agora.month, day=agora.day)
         
+        duracao = agora - h_entrada
+        minutos = duracao.total_seconds() / 60
+
+        if minutos <= 5: 
+            return 0.0
+        
+        for limite, valor in regras:
+            if minutos <= limite:
+                return valor
+        
+        return regras[-1][1]
+    except:
+        return 0.0
+
+def calcular_valor_simples(hora_entrada_str):
+    conn = sqlite3.connect(BANCO_DADOS)
+    cursor = conn.cursor()
+    cursor.execute("SELECT minutos_limite, valor FROM precos_faixas ORDER BY minutos_limite ASC")
+    regras = cursor.fetchall()
+    conn.close()
+
+    if not regras:
+        return 0.0
+
+    formato = '%H:%M:%S'
+    agora = datetime.now()
+    try:
+        h_entrada = datetime.strptime(hora_entrada_str, formato)
+        h_entrada = h_entrada.replace(year=agora.year, month=agora.month, day=agora.day)
+        duracao = agora - h_entrada
+        minutos = duracao.total_seconds() / 60
+
+        if minutos <= 5: 
+            return 0.0
+        
+        for limite, valor in regras:
+            if minutos <= limite:
+                return valor
+        
+        return regras[-1][1]
+        
+    except Exception as e:
+        print(f"Erro no cálculo: {e}")
+        return 0.0
 
 def registrar_entrada(placa, veiculo):
     """Salva a entrada no banco"""

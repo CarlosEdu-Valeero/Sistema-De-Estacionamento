@@ -1,5 +1,6 @@
 customtkinter==5.2.2
 darkdetect==0.8.0
 pillow==12.1.0
-packaging==25.0
-pyinstaller==6.18.0
+pywin32==311
+tkcalendar==1.6.1
+babel==2.18.0
