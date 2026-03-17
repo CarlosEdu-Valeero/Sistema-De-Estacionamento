@@ -26,9 +26,12 @@ class App(ctk.CTk):
         self.frame_menu = ctk.CTkFrame(self, width=320, corner_radius=0)
         self.frame_menu.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
+        self.btn_mensalistas = ctk.CTkButton(self.frame_menu, text="MENSALISTAS", fg_color="#34495e", command=self.abrir_mensalistas)
+        self.btn_mensalistas.pack(pady=10, padx=30, fill="x")
+
         self.btn_config = ctk.CTkButton(self.frame_menu, text="Configurar Preços", fg_color="transparent", 
                                        border_width=1, text_color="black", command=self.abrir_config_precos)
-        self.btn_config.pack(pady=10, padx=30, fill="x")
+        self.btn_config.pack(pady=5, padx=30, fill="x")
 
         self.lbl_ativos = ctk.CTkLabel(self.frame_menu, text="No Pátio: 0", font=("Arial", 18, "bold"), text_color="#3498db")
         self.lbl_ativos.pack(pady=(20, 5))
@@ -36,19 +39,22 @@ class App(ctk.CTk):
         self.lbl_finalizados = ctk.CTkLabel(self.frame_menu, text="Saíram Hoje: 0", font=("Arial", 14))
         self.lbl_finalizados.pack(pady=5)
 
-        ctk.CTkLabel(self.frame_menu, text="PLACA DO VEÍCULO", font=("Arial", 12)).pack(pady=(30, 0))
+        ctk.CTkLabel(self.frame_menu, text="PLACA DO VEÍCULO", font=("Arial", 12, "bold")).pack(pady=(20, 0))
         self.entry_placa = ctk.CTkEntry(self.frame_menu, width=220, height=50, font=("Arial", 26, "bold"), justify="center")
-        self.entry_placa.pack(pady=10)
+        self.entry_placa.pack(pady=5)
         self.entry_placa.focus()
+        self.entry_placa.bind('<KeyRelease>', self.formatar_placa)
 
         ctk.CTkLabel(self.frame_menu, text="MODELO VEÍCULO", font=("Arial", 12)).pack(pady=(10, 0))
         self.entry_veiculo = ctk.CTkEntry(self.frame_menu, width=220, height=35, font=("Arial", 16))
         self.entry_veiculo.pack(pady=5)
-
-        self.frame_sugestoes = ctk.CTkScrollableFrame(self.frame_menu, width=210, height=0) # Começa invisível
         self.entry_veiculo.bind('<KeyRelease>', self.buscar_sugestoes)
-        
-        self.entry_placa.bind('<KeyRelease>', self.formatar_placa)
+
+        self.frame_sugestoes = ctk.CTkScrollableFrame(self.frame_menu, width=210, height=0)
+
+        ctk.CTkLabel(self.frame_menu, text="TAMANHO / CATEGORIA", font=("Arial", 12)).pack(pady=(10, 0))
+        self.op_tamanho = ctk.CTkOptionMenu(self.frame_menu, values=["1 - Pequeno", "2 - Grande", "3 - Furgão"], width=220)
+        self.op_tamanho.pack(pady=5)
 
         self.check_imprimir = ctk.CTkCheckBox(self.frame_menu, text="Imprimir Ticket?")
         self.check_imprimir.select()
@@ -73,70 +79,52 @@ class App(ctk.CTk):
                                  date_pattern='dd/mm/yyyy')
         self.cal_data.pack(side="left", padx=5)
         self.cal_data.bind("<<DateEntrySelected>>", lambda e: self.buscar_historico())
+
+        self.frame_busca = ctk.CTkFrame(self.frame_lista, fg_color="transparent")
+        self.frame_busca.pack(fill="x", padx=10, pady=10)
+
+        ctk.CTkLabel(self.frame_busca, text="BUSCAR (ID/PLACA):", font=("Arial", 12, "bold")).pack(side="left", padx=(20, 5))
+        self.entry_busca_rapida = ctk.CTkEntry(self.frame_busca, width=150, placeholder_text="Digite aqui...")
+        self.entry_busca_rapida.pack(side="left", padx=5)
+        self.entry_busca_rapida.bind("<KeyRelease>", lambda e: self.buscar_historico())
         
         self.frame_scroll_lista = ctk.CTkScrollableFrame(self.frame_lista, fg_color="transparent")
         self.frame_scroll_lista.pack(expand=True, fill="both", padx=10, pady=10)
 
         self.buscar_historico()
 
-    def selecionar_da_lista(self, dados=None):
-        if hasattr(self, "popup") and self.popup and self.popup.winfo_exists():
-            return
-        
-        try:
-            linha_texto = self.txt_lista.get("insert linestart", "insert lineend")
-        
-            if "|" in linha_texto:
-                placa = linha_texto.split("|")[0].strip()
-                dados = funcoes.buscar_dados_placa(placa)
-            if dados:
-                self.popup_detalhe(dados)
-        except Exception as e:
-            print(f"Erro ao selecionar: {e}")
+    def formatar_placa(self, event):
+        if event.keysym == "BackSpace": return
+        texto = self.entry_placa.get().upper().replace("-", "")
+        if len(texto) >= 3:
+            novo = texto[:3] + "-" + texto[3:7]
+            if self.entry_placa.get() != novo:
+                self.entry_placa.delete(0, "end")
+                self.entry_placa.insert(0, novo)
 
     def buscar_sugestoes(self, event):
-        if event.keysym in ("Up", "Down", "Return", "Escape"):
-            return
-
+        if event.keysym in ("Up", "Down", "Return", "Escape"): return
         termo = self.entry_veiculo.get().upper()
-    
         if len(termo) < 2:
             self.fechar_sugestoes()
             return
-
         try:
             conn = sqlite3.connect('modelos_veiculos.db')
             cursor = conn.cursor()
             cursor.execute("SELECT nome FROM modelos WHERE nome LIKE ? LIMIT 5", (f'%{termo}%',))
             modelos = cursor.fetchall()
             conn.close()
-
-            if modelos:
-                self.mostrar_sugestoes(modelos)
-            else:
-                self.fechar_sugestoes()
-        except Exception as e:
-            print(f"Erro ao buscar modelos: {e}")
+            if modelos: self.mostrar_sugestoes(modelos)
+            else: self.fechar_sugestoes()
+        except: pass
 
     def mostrar_sugestoes(self, modelos):
-        for widget in self.frame_sugestoes.winfo_children():
-            widget.destroy()
-
-        self.frame_sugestoes.configure(height=120) 
+        for widget in self.frame_sugestoes.winfo_children(): widget.destroy()
+        self.frame_sugestoes.configure(height=120)
         self.frame_sugestoes.pack(pady=0)
-
         for m in modelos:
-            nome_modelo = m[0]
-            btn = ctk.CTkButton(
-                self.frame_sugestoes, 
-                text=nome_modelo, 
-                fg_color="transparent", 
-                text_color="black",
-                hover_color="#eee",
-                anchor="w",
-                height=25,
-                command=lambda n=nome_modelo: self.selecionar_modelo(n)
-            )
+            nome_m = m[0]
+            btn = ctk.CTkButton(self.frame_sugestoes, text=nome_m, fg_color="transparent", text_color="black", hover_color="#eee", anchor="w", height=25, command=lambda n=nome_m: self.selecionar_modelo(n))
             btn.pack(fill="x")
 
     def selecionar_modelo(self, nome):
@@ -149,63 +137,166 @@ class App(ctk.CTk):
         self.frame_sugestoes.configure(height=0)
 
     def popup_detalhe(self, dados):
-        placa, veiculo, entrada, saida, valor = dados
-
-        if not saida and (valor == 0 or valor == 0.0):
-            valor = funcoes.calcular_valor_atual(entrada)
-
+        placa, veiculo, entrada, saida, valor, id_reg = dados
         self.popup = ctk.CTkToplevel(self)
-        self.popup.title(f"Detalhes - {placa}")
+        self.popup.title(f"Detalhes - {id_reg} - {placa}")
         self.popup.geometry("400x470")
         self.popup.attributes("-topmost", True)
 
         ctk.CTkLabel(self.popup, text="DETALHES DO VEÍCULO", font=("Arial", 18, "bold")).pack(pady=20)
-    
         info_frame = ctk.CTkFrame(self.popup)
         info_frame.pack(padx=20, pady=10, fill="both", expand=True)
 
-        detalhes = [
-            f"PLACA: {placa}",
-            f"MODELO: {veiculo}",
-            f"ENTRADA: {entrada}",
-            f"SAÍDA: {saida if saida else 'Ainda no Pátio'}",
-            f"VALOR: R$ {valor:.2f}"
-        ]
-
+        detalhes = [f"PLACA: {placa}", f"MODELO: {veiculo}", f"ENTRADA: {entrada}", f"SAÍDA: {saida if saida else 'Ainda no Pátio'}", f"VALOR: R$ {valor:.2f}"]
         for info in detalhes:
             ctk.CTkLabel(info_frame, text=info, font=("Arial", 14)).pack(pady=5, anchor="w", padx=20)
 
-        dados_atualizados = (placa, veiculo, entrada, saida, valor)
-        btn_print = ctk.CTkButton(self.popup, text="REIMPRIMIR TICKET", fg_color="#34495e", 
-                               command=lambda: [self.reimprimir_especifico(dados_atualizados), self.popup.destroy()])
+        btn_print = ctk.CTkButton(self.popup, text="REIMPRIMIR TICKET", fg_color="#34495e", command=lambda: [self.reimprimir_especifico(dados), self.popup.destroy()])
         btn_print.pack(pady=10, padx=30, fill="x")
 
         if not saida:
-            btn_sair = ctk.CTkButton(self.popup, text="DAR SAÍDA AGORA", fg_color="#e74c3c", 
-                                  command=lambda: [self.entry_placa.delete(0, 'end'), 
-                                                 self.entry_placa.insert(0, placa), 
-                                                 self.executar_saida(), 
-                                                 self.popup.destroy()])
+            btn_sair = ctk.CTkButton(self.popup, text="DAR SAÍDA AGORA", fg_color="#e74c3c", command=lambda: [self.entry_placa.delete(0, 'end'), self.entry_placa.insert(0, placa), self.executar_saida(), self.popup.destroy()])
             btn_sair.pack(pady=10, padx=30, fill="x")
 
-        btn_fechar = ctk.CTkButton(self.popup, text="FECHAR", fg_color="transparent", border_width=1, 
-                                 command=self.popup.destroy)
+        btn_fechar = ctk.CTkButton(self.popup, text="FECHAR", fg_color="transparent", border_width=1, command=self.popup.destroy)
         btn_fechar.pack(pady=10)
 
-    def formatar_placa(self, event):
-        if event.keysym == "BackSpace": return
-        texto = self.entry_placa.get().upper().replace("-", "")
-        if len(texto) >= 3:
-            novo = texto[:3] + "-" + texto[3:7]
-            if self.entry_placa.get() != novo:
-                self.entry_placa.delete(0, "end")
-                self.entry_placa.insert(0, novo)
+    def abrir_mensalistas(self):
+        janela = ctk.CTkToplevel(self)
+        janela.title("Cadastro de Mensalistas")
+        janela.geometry("650x550")
+        janela.attributes("-topmost", True)
+        janela.focus()
+        frame_campos = ctk.CTkFrame(janela, fg_color="transparent")
+        frame_campos.pack(padx=15, pady=15, fill="both", expand=True)
+        campos = [("Nome", 0, 0), ("CPF", 0, 1), ("Telefone", 1, 0), ("Placa", 1, 1), ("Veículo", 2, 0), ("CEP", 2, 1), ("Endereço", 3, 0), ("Bairro", 3, 1), ("Cidade", 4, 0), ("UF", 4, 1), ("Data Vencimento", 5, 0), ("Valor da Mensalidade", 5, 1)]
+        entries = {}
+        for nome, r, c in campos:
+            f = ctk.CTkFrame(frame_campos, fg_color="transparent")
+            f.grid(row=r, column=c, padx=15, pady=10, sticky="w")
+            ctk.CTkLabel(f, text=nome.upper(), font=("Arial", 11, "bold")).pack(anchor="w")
+            en = ctk.CTkEntry(f, width=250)
+            en.pack()
+            entries[nome] = en
+        def salvar():
+            dados = {n: entries[n].get().upper().strip() for n, r, c in campos}
+            if not dados["Placa"] or not dados["Nome"]: return
+            funcoes.salvar_mensalista(dados)
+            messagebox.showinfo("Sucesso", "Mensalista cadastrado!")
+            janela.destroy()
+        ctk.CTkButton(janela, text="SALVAR MENSALISTA", fg_color="#27ae60", height=40, command=salvar).pack(pady=20)
 
-    def limpar_placa(self):
-        self.entry_placa.delete(0, 'end')
-        self.entry_veiculo.delete(0, 'end')
-        self.fechar_sugestoes()
-        self.entry_placa.focus()
+    def abrir_config_precos(self):
+        janela = ctk.CTkToplevel(self)
+        janela.title("Tabela de Preços")
+        janela.geometry("850x420")
+        janela.attributes("-topmost", True)
+        header = ["TAMANHO", "15 MIN", "30 MIN", "45 MIN", "60 MIN", "75 MIN", "EXTRA 15m", "DIÁRIA",]
+        for i, h in enumerate(header): ctk.CTkLabel(janela, text=h, font=("Arial", 11, "bold")).grid(row=0, column=i, padx=10, pady=15)
+        entries = {}
+        linhas = funcoes.obter_tabela_precos()
+        nomes = {1: "1 - PEQUENO", 2: "2 - GRANDE", 3: "3 - FURGÃO"}
+        for r_idx, row in enumerate(linhas):
+            ctk.CTkLabel(janela, text=nomes[row[0]], font=("Arial", 10, "bold")).grid(row=r_idx+1, column=0, padx=10)
+            for c_idx in range(1, 8):
+                e = ctk.CTkEntry(janela, width=80, justify="center")
+                e.insert(0, f"{row[c_idx]:.2f}")
+                e.grid(row=r_idx+1, column=c_idx, padx=5, pady=8)
+                entries[(row[0], c_idx)] = e
+        def salvar():
+            for t in [1, 2, 3]:
+                vals = [float(entries[(t, c)].get().replace(',', '.')) for c in range(1, 8)]
+                funcoes.atualizar_precos(t, vals)
+            messagebox.showinfo("Sucesso", "Preços atualizados!")
+            janela.destroy()
+        ctk.CTkButton(janela, text="SALVAR TABELA", fg_color="#27ae60", command=salvar).grid(row=5, column=0, columnspan=8, pady=30)
+
+    def buscar_historico(self):
+        for widget in self.frame_scroll_lista.winfo_children(): widget.destroy()
+    
+        termo = self.entry_busca_rapida.get().strip()
+        
+        if termo:
+            dados = funcoes.buscar_por_termo(termo)
+        else:
+            data_selecionada = self.cal_data.get()
+            dados = funcoes.buscar_por_data(data_selecionada)
+        for item in dados:
+            id_banco, placa_val, veiculo_val, entrada_val, saida_val, valor_db, tamanho_val =item[0], item[1], item[2], (item[3] if item[3] else "---")[:15], item[4], item[5], item[6]
+            if not saida_val:
+                valor_exibir = funcoes.calcular_valor_estacionamento(entrada_val, tamanho_val, placa_val) if len(item) > 6 else 0
+                status_txt = f"R$ {valor_exibir:.2f}"
+                cor_txt_status = "#2980b9"
+            else:
+                valor_exibir = valor_db
+                status_txt = f"SAÍDA: {saida_val} | R$ {valor_exibir:.2f}"
+                cor_txt_status = "#7f8c8d"
+
+            cor_card = "#ebf5fb" if not saida_val else "#f4f6f7"
+            cor_borda = "#3498db" if not saida_val else "#bdc3c7"
+            card = ctk.CTkFrame(self.frame_scroll_lista, fg_color=cor_card, border_color=cor_borda, border_width=1, height=30)
+            card.pack(fill="x", pady=2, padx=2)
+            card.pack_propagate(False)
+            
+            dados_popup = [item[1], item[2], item[3], item[4], (valor_exibir if not saida_val else valor_db), item[0]]
+            abrir_detalhe = lambda e, d=dados_popup: self.popup_detalhe(d)
+            card.bind("<Button-1>", abrir_detalhe)
+
+            lbl_id = ctk.CTkLabel(card, text=f"#{id_banco}", font=("Arial", 10), width=30, text_color="gray")
+            lbl_id.pack(side="left", padx=5)
+            lbl_placa = ctk.CTkLabel(card, text=placa_val, font=("Arial", 14, "bold"), width=100, anchor="w")
+            lbl_placa.pack(side="left", padx=15)
+            lbl_veiculo = ctk.CTkLabel(card, text=veiculo_val, font=("Arial", 13), width=150, anchor="w")
+            lbl_veiculo.pack(side="left", padx=10)
+            lbl_entrada = ctk.CTkLabel(card, text=f"ENT: {entrada_val}", font=("Arial", 12), width=100, anchor="w")
+            lbl_entrada.pack(side="left", padx=10)
+            lbl_status = ctk.CTkLabel(card, text=status_txt, font=("Arial", 12, "bold"), text_color=cor_txt_status)
+            lbl_status.pack(side="right", padx=15)
+            for w in [lbl_placa, lbl_veiculo, lbl_entrada, lbl_status]: w.bind("<Button-1>", abrir_detalhe)
+
+        no_patio = len([x for x in dados if not x[4]])
+        sairam = len([x for x in dados if x[4]])
+        self.lbl_ativos.configure(text=f"No Pátio: {no_patio}")
+        self.lbl_finalizados.configure(text=f"Saíram Hoje: {sairam}")
+
+    def executar_entrada(self):
+        placa = self.entry_placa.get().upper().strip()
+        veiculo = self.entry_veiculo.get().upper().strip() or "não informado"
+        tamanho = self.op_tamanho.get()[0]
+        if len(placa) >= 7:
+            if funcoes.veiculo_no_patio(placa):
+                messagebox.showwarning("Aviso", f"Veiculo {placa} já está no pátio")
+                return 
+            hora, id_gerado = funcoes.registrar_entrada(placa, veiculo, tamanho)
+            if self.check_imprimir.get():
+                ticket = funcoes.gerar_layout_ticket(placa, veiculo, hora, id_controle=id_gerado)
+                self.imprimir_ticket(ticket)
+            self.limpar_placa()
+            self.buscar_historico()
+
+    def executar_saida(self):
+        placa = self.entry_placa.get().upper().strip()
+        if placa:
+            ent, sai, val, veiculo, id_reg = funcoes.dar_saida_banco(placa)
+            if ent:
+                ticket = funcoes.gerar_layout_ticket(placa, veiculo, ent, sai, val, id_controle=id_reg)
+                self.imprimir_ticket(ticket)
+                self.limpar_placa()
+                self.buscar_historico()
+
+    def reimprimir_especifico(self, dados):
+        placa, veic, ent, sai, val = dados[:5]
+        id_c = dados[5] if len(dados) > 5 else None
+        
+        ticket = funcoes.gerar_layout_ticket(
+            placa=placa, 
+            veiculo=veic, 
+            ent=ent, 
+            sai=sai, 
+            valor=val, 
+            id_controle=id_c
+        )
+        self.imprimir_ticket(ticket)
 
     def imprimir_ticket(self, texto):
         try:
@@ -219,172 +310,14 @@ class App(ctk.CTk):
                 win32print.WritePrinter(hPrinter, b"\x1d\x56\x01") 
                 win32print.EndPagePrinter(hPrinter)
                 win32print.EndDocPrinter(hPrinter)
-            finally:
-                win32print.ClosePrinter(hPrinter)
-        except Exception as e:
-            print(f"Erro Impressora: {e}")
+            finally: win32print.ClosePrinter(hPrinter)
+        except: pass
 
-    def atualizar_contadores(self, dados):
-        no_patio = len([x for x in dados if not x[4]])
-        sairam = len([x for x in dados if x[4]])
-        self.lbl_ativos.configure(text=f"No Pátio: {no_patio}")
-        self.lbl_finalizados.configure(text=f"Saíram Hoje: {sairam}")
-
-    def buscar_historico(self):
-        for widget in self.frame_scroll_lista.winfo_children():
-            widget.destroy()
-
-        data = self.cal_data.get()
-        dados = funcoes.buscar_por_data(data)
-        
-        for item in dados:
-            placa_val = item[1]
-            veiculo_val = (item[2] if item[2] else "---")[:15]
-            entrada_val = item[3]
-            saida_val = item[4]
-            valor_db = item[5]
-            
-            if not saida_val:
-                valor_exibir = funcoes.calcular_valor_atual(entrada_val)
-                status_txt = f"R$ {valor_exibir:.2f}"
-                cor_txt_status = "#2980b9"
-            else:
-                valor_exibir = valor_db
-                status_txt = f"SAÍDA: {saida_val} | R$ {valor_exibir:.2f}"
-                cor_txt_status = "#7f8c8d"
-
-            cor_card = "#ebf5fb" if not saida_val else "#f4f6f7"
-            cor_borda = "#3498db" if not saida_val else "#bdc3c7"
-
-            card = ctk.CTkFrame(self.frame_scroll_lista, fg_color=cor_card, border_color=cor_borda, border_width=1, height=30)
-            card.pack(fill="x", pady=2, padx=2)
-            card.pack_propagate(False)
-
-            dados_popup = [item[1], item[2], item[3], item[4], (valor_exibir if not saida_val else valor_db)]
-            abrir_detalhe = lambda e, d=dados_popup: self.popup_detalhe(d)
-
-            card.bind("<Button-1>", abrir_detalhe)
-
-            lbl_placa = ctk.CTkLabel(card, text=placa_val, font=("Arial", 14, "bold"), width=100, anchor="w")
-            lbl_placa.pack(side="left", padx=15)
-
-            lbl_veiculo = ctk.CTkLabel(card, text=veiculo_val, font=("Arial", 13), width=150, anchor="w")
-            lbl_veiculo.pack(side="left", padx=10)
-
-            lbl_entrada = ctk.CTkLabel(card, text=f"ENT: {entrada_val}", font=("Arial", 12), width=100, anchor="w")
-            lbl_entrada.pack(side="left", padx=10)
-
-            lbl_status = ctk.CTkLabel(card, text=status_txt, font=("Arial", 12, "bold"), text_color=cor_txt_status)
-            lbl_status.pack(side="right", padx=15)
-
-            for widget in [lbl_placa, lbl_veiculo, lbl_entrada, lbl_status]:
-                widget.bind("<Button-1>", abrir_detalhe)
-
-        self.atualizar_contadores(dados)
-
-    def executar_entrada(self):
-        placa = self.entry_placa.get().upper()
-        veiculo = self.entry_veiculo.get().upper() or "não informado"
-        if len(placa) >= 8:
-            if funcoes.veiculo_no_patio(placa):
-                messagebox.showwarning(f"Veiculo {placa} já está no pátio")
-                return 
-            hora = funcoes.registrar_entrada(placa, veiculo)
-            if self.check_imprimir.get():
-                ticket = funcoes.gerar_layout_ticket(placa, veiculo, hora)
-                self.imprimir_ticket(ticket)
-            self.entry_placa.delete(0, 'end')
-            self.entry_veiculo.delete(0, 'end')
-            self.entry_placa.focus()
-            self.fechar_sugestoes()
-            self.buscar_historico()
-
-    def executar_saida(self):
-        placa = self.entry_placa.get().upper()
-        if placa:
-            ent, sai, val, veiculo = funcoes.dar_saida_banco(placa)
-            if ent:
-                ticket = funcoes.gerar_layout_ticket(placa, veiculo, ent, sai, val)
-                self.imprimir_ticket(ticket)
-                self.entry_placa.delete(0, 'end')
-                self.entry_veiculo.delete(0, 'end')
-                self.fechar_sugestoes()
-                self.buscar_historico()
-            else:
-                print("Placa não encontrada no pátio.")
-
-    def reimprimir_especifico(self, dados):
-        ticket = funcoes.gerar_layout_ticket(dados[0], dados[1], dados[2], dados[3], dados[4])
-        self.imprimir_ticket(ticket)
-    
-    def abrir_config_precos(self):
-        janela = ctk.CTkToplevel(self)
-        janela.title("Configurar Tabela de Preços")
-        janela.geometry("400x500")
-        janela.grab_set()
-        janela.attributes("-topmost", True)
-
-        ctk.CTkLabel(janela, text="CONFIGURAR FAIXAS DE PREÇO", font=("Arial", 16, "bold")).pack(pady=10)
-        ctk.CTkLabel(janela, text="Defina o tempo máximo (min) e o valor (R$)", font=("Arial", 10)).pack(pady=5)
-
-        container = ctk.CTkScrollableFrame(janela, width=350, height=300)
-        container.pack(pady=10, padx=10)
-
-        rows = []
-        
-        def renderizar_linhas():
-            for w in container.winfo_children(): w.destroy()
-            rows.clear()
-            
-            conn = sqlite3.connect('estacionamento.db')
-            cursor = conn.cursor()
-            cursor.execute("SELECT minutos_limite, valor FROM precos_faixas ORDER BY minutos_limite ASC")
-            dados = cursor.fetchall()
-            conn.close()
-
-            for lim, val in dados:
-                f = ctk.CTkFrame(container, fg_color="transparent")
-                f.pack(fill="x", pady=2)
-                e_min = ctk.CTkEntry(f, width=100)
-                e_min.insert(0, str(lim))
-                e_min.pack(side="left", padx=5)
-                
-                e_val = ctk.CTkEntry(f, width=100)
-                e_val.insert(0, f"{val:.2f}")
-                e_val.pack(side="left", padx=5)
-                
-                rows.append((e_min, e_val))
-
-        def salvar():
-            try:
-                novas_regras = []
-                for e_m, e_v in rows:
-                    m = int(e_m.get())
-                    v = float(e_v.get().replace(',', '.'))
-                    novas_regras.append((m, v))
-                
-                conn = sqlite3.connect('estacionamento.db')
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM precos_faixas")
-                cursor.executemany("INSERT INTO precos_faixas (minutos_limite, valor) VALUES (?, ?)", novas_regras)
-                conn.commit()
-                conn.close()
-                messagebox.showinfo("Sucesso", "Preços atualizados!")
-                janela.destroy()
-            except:
-                messagebox.showerror("Erro", "Valores inválidos!")
-
-        def add_linha():
-            f = ctk.CTkFrame(container, fg_color="transparent")
-            f.pack(fill="x", pady=2)
-            e_m = ctk.CTkEntry(f, width=100); e_m.pack(side="left", padx=5)
-            e_v = ctk.CTkEntry(f, width=100); e_v.pack(side="left", padx=5)
-            rows.append((e_m, e_v))
-
-        renderizar_linhas()
-        
-        ctk.CTkButton(janela, text="+ Adicionar Faixa", fg_color="#34495e", command=add_linha).pack(pady=5)
-        ctk.CTkButton(janela, text="SALVAR TUDO", fg_color="#27ae60", command=salvar).pack(pady=10, padx=20, fill="x")
+    def limpar_placa(self):
+        self.entry_placa.delete(0, 'end')
+        self.entry_veiculo.delete(0, 'end')
+        self.fechar_sugestoes()
+        self.entry_placa.focus()
 
 if __name__ == "__main__":
     app = App()
